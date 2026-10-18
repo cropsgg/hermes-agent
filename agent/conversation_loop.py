@@ -699,12 +699,14 @@ def run_conversation(
                 if _lock is not None:
                     with _lock:
                         if agent._pending_steer:
-                            agent._pending_steer = agent._pending_steer + "\n" + _pre_api_steer
+                            # Preserve temporal order: drained steer is older, so it
+                            # must come BEFORE any concurrently-arrived steer.
+                            agent._pending_steer = _pre_api_steer + "\n" + agent._pending_steer
                         else:
                             agent._pending_steer = _pre_api_steer
                 else:
                     existing = getattr(agent, "_pending_steer", None)
-                    agent._pending_steer = (existing + "\n" + _pre_api_steer) if existing else _pre_api_steer
+                    agent._pending_steer = (_pre_api_steer + "\n" + existing) if existing else _pre_api_steer
 
         # Prepare messages for API call
         # If we have an ephemeral system prompt, prepend it to the messages

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import os
 from pathlib import Path
 from typing import Optional
@@ -25,11 +26,18 @@ def _hermes_root_path() -> Path:
         return Path(os.path.expanduser("~/.hermes"))
 
 
-def build_write_denied_paths(home: str) -> set[str]:
-    """Return exact sensitive paths that must never be written."""
+@functools.lru_cache(maxsize=None)
+def build_write_denied_paths(home: str) -> frozenset[str]:
+    """Return exact sensitive paths that must never be written.
+
+    Cached per ``home`` value — these paths are constant for the process
+    lifetime, so rebuilding them on every ``is_write_denied`` call is
+    unnecessary overhead.  Call ``build_write_denied_paths.cache_clear()``
+    after a profile switch that changes HERMES_HOME.
+    """
     hermes_home = _hermes_home_path()
     hermes_root = _hermes_root_path()
-    return {
+    return frozenset(
         os.path.realpath(p)
         for p in [
             os.path.join(home, ".ssh", "authorized_keys"),
@@ -54,12 +62,18 @@ def build_write_denied_paths(home: str) -> set[str]:
             "/etc/passwd",
             "/etc/shadow",
         ]
-    }
+    )
 
 
-def build_write_denied_prefixes(home: str) -> list[str]:
-    """Return sensitive directory prefixes that must never be written."""
-    return [
+@functools.lru_cache(maxsize=None)
+def build_write_denied_prefixes(home: str) -> tuple[str, ...]:
+    """Return sensitive directory prefixes that must never be written.
+
+    Cached per ``home`` value — see ``build_write_denied_paths`` for the
+    rationale.  Call ``build_write_denied_prefixes.cache_clear()`` after a
+    profile switch.
+    """
+    return tuple(
         os.path.realpath(p) + os.sep
         for p in [
             os.path.join(home, ".ssh"),
@@ -72,7 +86,7 @@ def build_write_denied_prefixes(home: str) -> list[str]:
             os.path.join(home, ".azure"),
             os.path.join(home, ".config", "gh"),
         ]
-    ]
+    )
 
 
 def get_safe_write_root() -> Optional[str]:

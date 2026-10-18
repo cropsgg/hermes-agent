@@ -922,10 +922,12 @@ def _try_resolve_fallback_provider() -> dict | None:
                     "model": entry.get("model"),
                 }
             except Exception as fb_exc:
-                logger.debug("Fallback entry %s failed: %s", entry.get("provider"), fb_exc)
+                logger.warning(
+                    "Fallback entry %r failed to resolve: %s", entry.get("provider"), fb_exc
+                )
                 continue
-    except Exception:
-        pass
+    except Exception as _fb_err:
+        logger.warning("Failed to resolve fallback provider from config: %s", _fb_err)
     return None
 
 

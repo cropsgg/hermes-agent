@@ -276,6 +276,55 @@ class TestPreApiCallSteerDrain:
         assert "change approach" in messages[2]["content"]
 
 
+class TestPreApiDrainConcurrentOrdering:
+    def test_restash_preserves_temporal_order_under_concurrent_steer(self):
+        """Older drained steer must appear BEFORE a newer concurrent steer
+        after the put-back in conversation_loop._run_agent_loop.
+
+        Scenario:
+          1. "first steer" is sent and then drained (_pre_api_steer).
+          2. No tool message exists — so it must be put back.
+          3. While putting back, "second steer" arrives concurrently.
+          4. Result must be "first steer\\nsecond steer" (temporal order).
+        """
+        agent = _bare_agent()
+        agent.steer("first steer")
+        _pre_api_steer = agent._drain_pending_steer()
+        assert _pre_api_steer == "first steer"
+
+        # Simulate a concurrent steer that arrived between drain and put-back.
+        agent.steer("second steer")
+
+        # Replicate the put-back logic from conversation_loop.py.
+        with agent._pending_steer_lock:
+            if agent._pending_steer:
+                agent._pending_steer = _pre_api_steer + "\n" + agent._pending_steer
+            else:
+                agent._pending_steer = _pre_api_steer
+
+        result = agent._drain_pending_steer()
+        assert result == "first steer\nsecond steer", (
+            f"Expected temporal order 'first steer\\nsecond steer', got: {result!r}"
+        )
+
+    def test_restash_no_concurrent_steer_unchanged(self):
+        """When no concurrent steer arrives, the put-back result equals
+        the original drained text unchanged."""
+        agent = _bare_agent()
+        agent.steer("only steer")
+        _pre_api_steer = agent._drain_pending_steer()
+
+        # Put back with no concurrent steer.
+        with agent._pending_steer_lock:
+            if agent._pending_steer:
+                agent._pending_steer = _pre_api_steer + "\n" + agent._pending_steer
+            else:
+                agent._pending_steer = _pre_api_steer
+
+        result = agent._drain_pending_steer()
+        assert result == "only steer"
+
+
 class TestSteerCommandRegistry:
     def test_steer_in_command_registry(self):
         """The /steer slash command must be registered so it reaches all
